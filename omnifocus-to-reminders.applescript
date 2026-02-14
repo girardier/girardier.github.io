@@ -90,12 +90,7 @@ on createReminder(targetList, aTask, parentReminder)
 	-- Build notes
 	set notesText to my buildNotes(aTask, tagString)
 
-	-- Build reminder properties
-	set reminderProps to {name:taskName, body:notesText}
-
-	if taskDueDate is not missing value then
-		set reminderProps to reminderProps & {due date:taskDueDate, remind me date:taskDueDate}
-	end if
+	set hasDueDate to (taskDueDate is not missing value)
 
 	if dryRun then
 		log "  [DRY RUN] Would create reminder: " & taskName
@@ -103,14 +98,17 @@ on createReminder(targetList, aTask, parentReminder)
 	end if
 
 	-- Create the reminder in Apple Reminders
+	-- All property names (due date, remind me date, etc.) must be inside the tell block
 	tell application "Reminders"
-		if parentReminder is missing value then
-			-- Top-level reminder in the list
-			set newReminder to make new reminder at end of reminders of targetList with properties reminderProps
+		-- Create the reminder with or without a due date
+		if hasDueDate then
+			set newReminder to make new reminder at end of reminders of targetList with properties {name:taskName, body:notesText, due date:taskDueDate, remind me date:taskDueDate}
 		else
-			-- Sub-reminder (child) of an existing reminder
-			set newReminder to make new reminder at end of reminders of targetList with properties reminderProps
-			-- Apple Reminders supports subtasks via the "parent" property (macOS 13+)
+			set newReminder to make new reminder at end of reminders of targetList with properties {name:taskName, body:notesText}
+		end if
+
+		-- Set parent for subtask hierarchy (macOS 13 Ventura+)
+		if parentReminder is not missing value then
 			try
 				set parent of newReminder to parentReminder
 			on error
@@ -136,9 +134,7 @@ on createReminder(targetList, aTask, parentReminder)
 	end tell
 
 	repeat with childTask in subtasks
-		tell application "Reminders"
-			my createReminder(targetList, childTask, newReminder)
-		end tell
+		my createReminder(targetList, childTask, newReminder)
 	end repeat
 end createReminder
 
@@ -152,8 +148,10 @@ on processProject(proj, listPrefix)
 		set projStatus to status of proj
 	end tell
 
-	-- Skip dropped projects
-	if projStatus is "dropped status" then return
+	-- Skip dropped projects (status is an OmniFocus enum constant, not a string)
+	tell application "OmniFocus"
+		if projStatus is dropped status then return
+	end tell
 
 	-- Determine list name
 	if listPrefix is "" then
@@ -242,8 +240,14 @@ on run
 	tell application "OmniFocus"
 		set doc to default document
 
-		-- 1) Process top-level projects (those not inside any folder)
-		set topProjects to projects of doc whose folder is missing value
+		-- 1) Gather all top-level projects (those not inside any folder)
+		set allProjects to projects of doc
+		set topProjects to {}
+		repeat with proj in allProjects
+			if folder of proj is missing value then
+				set end of topProjects to proj
+			end if
+		end repeat
 
 		-- 2) Process all folders (and their nested projects)
 		set topFolders to folders of doc
