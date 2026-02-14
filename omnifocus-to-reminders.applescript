@@ -98,13 +98,15 @@ on createReminder(targetList, aTask, parentReminder)
 	end if
 
 	-- Create the reminder in Apple Reminders
-	-- All property names (due date, remind me date, etc.) must be inside the tell block
+	-- Multi-word properties (due date, remind me date) cannot go in record literals,
+	-- so we create with simple props first, then set the rest individually.
 	tell application "Reminders"
-		-- Create the reminder with or without a due date
+		set newReminder to make new reminder at end of reminders of targetList with properties {name:taskName, body:notesText}
+
+		-- Set due date and alert separately to avoid record-literal parsing issues
 		if hasDueDate then
-			set newReminder to make new reminder at end of reminders of targetList with properties {name:taskName, body:notesText, due date:taskDueDate, remind me date:taskDueDate}
-		else
-			set newReminder to make new reminder at end of reminders of targetList with properties {name:taskName, body:notesText}
+			set due date of newReminder to taskDueDate
+			set remind me date of newReminder to taskDueDate
 		end if
 
 		-- Set parent for subtask hierarchy (macOS 13 Ventura+)
